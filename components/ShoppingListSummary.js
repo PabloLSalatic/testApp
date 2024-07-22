@@ -4,27 +4,34 @@ import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Checkbox } from "./ui/checkbox";
 import { Label } from "./ui/label";
+import { database } from "../firebase";
+import { ref, onValue, update } from "firebase/database";
 
 export default function ShoppingListSummary() {
   const [items, setItems] = useState([]);
 
   useEffect(() => {
-    // In a real application, you would fetch this data from an API or local storage
-    // For now, we'll just set some dummy values
-    setItems([
-      { name: "Milk", checked: false },
-      { name: "Bread", checked: true },
-      { name: "Eggs", checked: false },
-      { name: "Butter", checked: false },
-      { name: "Cheese", checked: true },
-    ]);
+    const itemsRef = ref(database, "shoppingList");
+    onValue(itemsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setItems(
+          Object.entries(data).map(([key, value]) => ({
+            id: key,
+            ...value,
+          })),
+        );
+      }
+    });
   }, []);
 
-  const handleToggle = (index) => {
-    const newItems = [...items];
-    newItems[index].checked = !newItems[index].checked;
-    setItems(newItems);
-    // In a real application, you would also update this in your backend or local storage
+  const handleToggle = (id) => {
+    const item = items.find((item) => item.id === id);
+    if (item) {
+      const updates = {};
+      updates[`/shoppingList/${id}/checked`] = !item.checked;
+      update(ref(database), updates);
+    }
   };
 
   return (
@@ -34,15 +41,15 @@ export default function ShoppingListSummary() {
       </CardHeader>
       <CardContent>
         <ul className="space-y-2">
-          {items.map((item, index) => (
-            <li key={index} className="flex items-center space-x-2">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center space-x-2">
               <Checkbox
-                id={`item-${index}`}
+                id={`item-${item.id}`}
                 checked={item.checked}
-                onCheckedChange={() => handleToggle(index)}
+                onCheckedChange={() => handleToggle(item.id)}
               />
               <Label
-                htmlFor={`item-${index}`}
+                htmlFor={`item-${item.id}`}
                 className={`flex-grow ${item.checked ? "line-through text-gray-500" : ""}`}
               >
                 {item.name}

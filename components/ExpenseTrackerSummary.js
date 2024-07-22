@@ -1,15 +1,32 @@
+// components/ExpenseTrackerSummary.js
 "use client";
 
 import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
+import { database } from "../firebase";
+import { ref, onValue } from "firebase/database";
 
 export default function ExpenseTrackerSummary() {
-  const [amountOwed, setAmountOwed] = useState(0);
+  const [peopleOwed, setPeopleOwed] = useState([]);
+  const [totalOwed, setTotalOwed] = useState(0);
 
   useEffect(() => {
-    // In a real application, you would fetch this data from an API or local storage
-    // For now, we'll just set a dummy value
-    setAmountOwed(50.75);
+    const peopleRef = ref(database, "people");
+    onValue(peopleRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        const peopleArray = Object.values(data).filter(
+          (person) => person.amountOwed > 0,
+        );
+        setPeopleOwed(peopleArray);
+        setTotalOwed(
+          peopleArray.reduce((sum, person) => sum + person.amountOwed, 0),
+        );
+      } else {
+        setPeopleOwed([]);
+        setTotalOwed(0);
+      }
+    });
   }, []);
 
   return (
@@ -18,9 +35,22 @@ export default function ExpenseTrackerSummary() {
         <CardTitle>Expense Summary</CardTitle>
       </CardHeader>
       <CardContent>
-        <div className="text-center">
-          <p className="text-xl">Amount owed per person:</p>
-          <p className="text-3xl font-bold">${amountOwed.toFixed(2)}</p>
+        <div className="space-y-4">
+          <div className="text-center">
+            <p className="text-xl">Total amount owed:</p>
+            <p className="text-3xl font-bold">${totalOwed.toFixed(2)}</p>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold mb-2">Breakdown:</h3>
+            <ul className="space-y-1">
+              {peopleOwed.map((person) => (
+                <li key={person.name} className="flex justify-between">
+                  <span>{person.name}</span>
+                  <span>${person.amountOwed.toFixed(2)}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </CardContent>
     </Card>

@@ -1,31 +1,59 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { Label } from "./ui/label";
 import { Checkbox } from "./ui/checkbox";
+import { database } from "../firebase";
+import { ref, onValue, push, update, remove } from "firebase/database";
 
-export default function ShoppingList({ limitItems = null }) {
+export default function ShoppingList() {
   const [item, setItem] = useState("");
   const [items, setItems] = useState([]);
+
+  useEffect(() => {
+    const itemsRef = ref(database, "shoppingList");
+    onValue(itemsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setItems(
+          Object.entries(data).map(([key, value]) => ({
+            id: key,
+            ...value,
+          })),
+        );
+      } else {
+        setItems([]);
+      }
+    });
+  }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (item.trim()) {
-      setItems([...items, { name: item.trim(), checked: false }]);
+      const itemsRef = ref(database, "shoppingList");
+      push(itemsRef, {
+        name: item.trim(),
+        checked: false,
+      });
       setItem("");
     }
   };
 
-  const handleToggle = (index) => {
-    const newItems = [...items];
-    newItems[index].checked = !newItems[index].checked;
-    setItems(newItems);
+  const handleToggle = (id) => {
+    const item = items.find((item) => item.id === id);
+    if (item) {
+      const updates = {};
+      updates[`/shoppingList/${id}/checked`] = !item.checked;
+      update(ref(database), updates);
+    }
   };
 
-  const displayItems = limitItems ? items.slice(0, limitItems) : items;
+  const handleDelete = (id) => {
+    remove(ref(database, `shoppingList/${id}`));
+  };
 
   return (
     <Card className="w-full shadow-lg">
@@ -48,27 +76,29 @@ export default function ShoppingList({ limitItems = null }) {
           </Button>
         </form>
         <ul className="mt-4 space-y-2">
-          {displayItems.map((item, index) => (
-            <li key={index} className="flex items-center space-x-2">
+          {items.map((item) => (
+            <li key={item.id} className="flex items-center space-x-2">
               <Checkbox
-                id={`item-${index}`}
+                id={`item-${item.id}`}
                 checked={item.checked}
-                onCheckedChange={() => handleToggle(index)}
+                onCheckedChange={() => handleToggle(item.id)}
               />
               <Label
-                htmlFor={`item-${index}`}
-                className={`flex-grow p-2 ${item.checked ? "line-through text-gray-500" : ""}`}
+                htmlFor={`item-${item.id}`}
+                className={`flex-grow ${item.checked ? "line-through text-gray-500" : ""}`}
               >
                 {item.name}
               </Label>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => handleDelete(item.id)}
+              >
+                Delete
+              </Button>
             </li>
           ))}
         </ul>
-        {limitItems && items.length > limitItems && (
-          <p className="mt-2 text-sm text-gray-500">
-            {items.length - limitItems} more item(s) not shown
-          </p>
-        )}
       </CardContent>
     </Card>
   );
