@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "./ui/card";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
@@ -15,90 +15,130 @@ import {
 import { database } from "../firebase";
 import { ref, set, push, onValue, get } from "firebase/database";
 
-export default function ExpenseTracker() {
+export default function EnhancedExpenseTracker() {
   const [amount, setAmount] = useState("");
-  const [selectedPeople, setSelectedPeople] = useState([]);
-  const [newPerson, setNewPerson] = useState("");
-  const [people, setPeople] = useState({});
-  const [expenses, setExpenses] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [transactionType, setTransactionType] = useState("expense");
+  const [category, setCategory] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [budget, setBudget] = useState({});
+  const [accounts, setAccounts] = useState({});
+  const [selectedAccount, setSelectedAccount] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterCategory, setFilterCategory] = useState("all");
+  const [newAccountName, setNewAccountName] = useState("");
+  const [isDivided, setIsDivided] = useState(false);
 
   useEffect(() => {
-    const peopleRef = ref(database, "people");
-    onValue(peopleRef, (snapshot) => {
+    const budgetRef = ref(database, "budget");
+    onValue(budgetRef, (snapshot) => {
       const data = snapshot.val();
-      if (data) {
-        setPeople(data);
-      } else {
-        setPeople({});
-      }
+      if (data) setBudget(data);
     });
 
-    const expensesRef = ref(database, "expenses");
-    onValue(expensesRef, (snapshot) => {
+    const accountsRef = ref(database, "accounts");
+    onValue(accountsRef, (snapshot) => {
       const data = snapshot.val();
-      if (data) {
-        setExpenses(Object.values(data));
-      } else {
-        setExpenses([]);
-      }
+      if (data) setAccounts(data);
+    });
+
+    const transactionsRef = ref(database, "transactions");
+    onValue(transactionsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) setTransactions(Object.values(data));
     });
   }, []);
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (amount && selectedPeople.length > 0) {
-      const expenseAmount = parseFloat(amount);
-      const splitAmount = expenseAmount / selectedPeople.length;
+    if (amount && selectedAccount) {
+      const transactionAmount = parseFloat(amount);
 
-      // Add the expense to the expenses list
-      const expensesRef = ref(database, "expenses");
-      push(expensesRef, {
-        amount: expenseAmount,
-        people: selectedPeople,
-        date: new Date().toISOString(),
+      const transactionsRef = ref(database, "transactions");
+      push(transactionsRef, {
+        amount: transactionAmount,
+        type: transactionType,
+        category,
+        date,
+        account: selectedAccount,
+        isDivided,
       });
 
-      // Update owed amounts for each person
-      selectedPeople.forEach((personId) => {
-        const personRef = ref(database, `people/${personId}`);
-        get(personRef).then((snapshot) => {
-          const person = snapshot.val();
-          if (person) {
-            set(personRef, {
-              ...person,
-              amountOwed: (person.amountOwed || 0) + splitAmount,
-            });
-          }
+      const accountRef = ref(database, `accounts/${selectedAccount}`);
+      get(accountRef).then((snapshot) => {
+        const account = snapshot.val();
+        if (account) {
+          set(accountRef, {
+            ...account,
+            balance:
+              account.balance +
+              (transactionType === "income"
+                ? transactionAmount
+                : -transactionAmount),
+          });
+        }
+      });
+
+      if (category) {
+        const budgetRef = ref(database, `budget/${category}`);
+        get(budgetRef).then((snapshot) => {
+          const categoryBudget = snapshot.val() || { limit: 0, spent: 0 };
+          set(budgetRef, {
+            ...categoryBudget,
+            spent:
+              categoryBudget.spent +
+              (transactionType === "expense" ? transactionAmount : 0),
+          });
         });
-      });
+      }
 
-      // Clear the form
       setAmount("");
-      setSelectedPeople([]);
+      setCategory("");
+      setIsDivided(false);
     }
   };
 
-  const handleAddPerson = () => {
-    if (newPerson.trim()) {
-      const peopleRef = ref(database, "people");
-      push(peopleRef, {
-        name: newPerson.trim(),
-        amountOwed: 0,
+  const handleAddAccount = () => {
+    if (newAccountName.trim()) {
+      const accountsRef = ref(database, "accounts");
+      push(accountsRef, {
+        name: newAccountName.trim(),
+        balance: 0,
       });
-      setNewPerson("");
+      setNewAccountName("");
     }
   };
+
+  const filteredTransactions = transactions.filter(
+    (transaction) =>
+      transaction.category.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (filterCategory === "all"
+        ? true
+        : transaction.category === filterCategory),
+  );
 
   return (
     <div className="space-y-8">
       <Card className="w-full shadow-lg">
         <CardHeader>
-          <CardTitle>Add Expense</CardTitle>
+          <CardTitle>Add Transaction</CardTitle>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="amount">Amount Spent</Label>
+              <Label htmlFor="transactionType">Transaction Type</Label>
+              <Select onValueChange={setTransactionType} defaultValue="expense">
+                <SelectTrigger>
+                  <SelectValue placeholder="Select transaction type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="expense">Expense</SelectItem>
+                  <SelectItem value="income">Income</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="amount">Amount</Label>
               <Input
                 id="amount"
                 type="number"
@@ -108,57 +148,51 @@ export default function ExpenseTracker() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="people">Select People</Label>
-              <Select
-                onValueChange={(value) =>
-                  setSelectedPeople((prev) => [...prev, value])
-                }
-              >
+              <Label htmlFor="category">Category</Label>
+              <Input
+                id="category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                placeholder="Enter category"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="date">Date</Label>
+              <Input
+                id="date"
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="account">Account</Label>
+              <Select onValueChange={setSelectedAccount}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a person" />
+                  <SelectValue placeholder="Select an account" />
                 </SelectTrigger>
                 <SelectContent>
-                  {Object.entries(people).map(([id, person]) => (
+                  {Object.entries(accounts).map(([id, account]) => (
                     <SelectItem key={id} value={id}>
-                      {person.name}
+                      {account.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {selectedPeople.map((personId) => (
-                <div key={personId} className="flex items-center space-x-2">
-                  <span>{people[personId]?.name}</span>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="sm"
-                    onClick={() =>
-                      setSelectedPeople((prev) =>
-                        prev.filter((id) => id !== personId),
-                      )
-                    }
-                  >
-                    Remove
-                  </Button>
-                </div>
-              ))}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="newPerson">Add New Person</Label>
-              <div className="flex space-x-2">
-                <Input
-                  id="newPerson"
-                  value={newPerson}
-                  onChange={(e) => setNewPerson(e.target.value)}
-                  placeholder="Enter name"
-                />
-                <Button type="button" onClick={handleAddPerson}>
-                  Add
+            {transactionType === "expense" && (
+              <div className="flex items-center space-x-2">
+                <Button
+                  type="button"
+                  onClick={() => setIsDivided(!isDivided)}
+                  variant={isDivided ? "default" : "outline"}
+                >
+                  {isDivided ? "Divided" : "Divide?"}
                 </Button>
               </div>
-            </div>
+            )}
             <Button type="submit" className="w-full">
-              Add Expense
+              Add Transaction
             </Button>
           </form>
         </CardContent>
@@ -166,19 +200,90 @@ export default function ExpenseTracker() {
 
       <Card className="w-full shadow-lg">
         <CardHeader>
-          <CardTitle>Amount Owed</CardTitle>
+          <CardTitle>Manage Accounts</CardTitle>
         </CardHeader>
         <CardContent>
-          <ul className="space-y-2">
-            {Object.entries(people)
-              .filter(([_, person]) => person.amountOwed > 0)
-              .map(([id, person]) => (
-                <li key={id} className="flex justify-between">
-                  <span>{person.name}</span>
-                  <span>${person.amountOwed.toFixed(2)}</span>
+          <div className="space-y-4">
+            <div className="flex space-x-2">
+              <Input
+                placeholder="New account name"
+                value={newAccountName}
+                onChange={(e) => setNewAccountName(e.target.value)}
+              />
+              <Button onClick={handleAddAccount}>Add Account</Button>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold">Existing Accounts</h3>
+              <ul>
+                {Object.entries(accounts).map(([id, account]) => (
+                  <li key={id} className="flex justify-between">
+                    <span>{account.name}</span>
+                    <span>${account.balance.toFixed(2)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card className="w-full shadow-lg">
+        <CardHeader>
+          <CardTitle>Budget Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul>
+            {Object.entries(budget).map(([category, { limit, spent }]) => (
+              <li key={category} className="flex justify-between">
+                <span>{category}</span>
+                <span>
+                  ${spent.toFixed(2)} / ${limit.toFixed(2)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </CardContent>
+      </Card>
+
+      <Card className="w-full shadow-lg">
+        <CardHeader>
+          <CardTitle>Recent Transactions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            <div className="flex space-x-2">
+              <Input
+                placeholder="Search transactions"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <Select onValueChange={setFilterCategory} defaultValue="all">
+                <SelectTrigger>
+                  <SelectValue placeholder="Filter by category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Categories</SelectItem>
+                  {Array.from(new Set(transactions.map((t) => t.category))).map(
+                    (category) => (
+                      <SelectItem key={category} value={category}>
+                        {category}
+                      </SelectItem>
+                    ),
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <ul className="space-y-2">
+              {filteredTransactions.map((transaction, index) => (
+                <li key={index} className="flex justify-between">
+                  <span>{transaction.category}</span>
+                  <span>${transaction.amount.toFixed(2)}</span>
+                  <span>{new Date(transaction.date).toLocaleDateString()}</span>
+                  <span>{transaction.isDivided ? "Divided" : ""}</span>
                 </li>
               ))}
-          </ul>
+            </ul>
+          </div>
         </CardContent>
       </Card>
     </div>
