@@ -1,4 +1,3 @@
-// components/ExpenseTracker.js
 "use client";
 
 import { useState, useEffect } from "react";
@@ -20,7 +19,7 @@ export default function ExpenseTracker() {
   const [amount, setAmount] = useState("");
   const [selectedPeople, setSelectedPeople] = useState([]);
   const [newPerson, setNewPerson] = useState("");
-  const [people, setPeople] = useState([]);
+  const [people, setPeople] = useState({});
   const [expenses, setExpenses] = useState([]);
 
   useEffect(() => {
@@ -28,7 +27,9 @@ export default function ExpenseTracker() {
     onValue(peopleRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setPeople(Object.values(data));
+        setPeople(data);
+      } else {
+        setPeople({});
       }
     });
 
@@ -37,6 +38,8 @@ export default function ExpenseTracker() {
       const data = snapshot.val();
       if (data) {
         setExpenses(Object.values(data));
+      } else {
+        setExpenses([]);
       }
     });
   }, []);
@@ -56,14 +59,16 @@ export default function ExpenseTracker() {
       });
 
       // Update owed amounts for each person
-      selectedPeople.forEach((person) => {
-        const personRef = ref(database, `people/${person}`);
+      selectedPeople.forEach((personId) => {
+        const personRef = ref(database, `people/${personId}`);
         get(personRef).then((snapshot) => {
-          const currentAmount = snapshot.val()?.amountOwed || 0;
-          set(personRef, {
-            name: person,
-            amountOwed: currentAmount + splitAmount,
-          });
+          const person = snapshot.val();
+          if (person) {
+            set(personRef, {
+              ...person,
+              amountOwed: (person.amountOwed || 0) + splitAmount,
+            });
+          }
         });
       });
 
@@ -113,23 +118,23 @@ export default function ExpenseTracker() {
                   <SelectValue placeholder="Select a person" />
                 </SelectTrigger>
                 <SelectContent>
-                  {people.map((person) => (
-                    <SelectItem key={person.name} value={person.name}>
+                  {Object.entries(people).map(([id, person]) => (
+                    <SelectItem key={id} value={id}>
                       {person.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              {selectedPeople.map((person) => (
-                <div key={person} className="flex items-center space-x-2">
-                  <span>{person}</span>
+              {selectedPeople.map((personId) => (
+                <div key={personId} className="flex items-center space-x-2">
+                  <span>{people[personId]?.name}</span>
                   <Button
                     type="button"
                     variant="destructive"
                     size="sm"
                     onClick={() =>
                       setSelectedPeople((prev) =>
-                        prev.filter((p) => p !== person),
+                        prev.filter((id) => id !== personId),
                       )
                     }
                   >
@@ -165,10 +170,10 @@ export default function ExpenseTracker() {
         </CardHeader>
         <CardContent>
           <ul className="space-y-2">
-            {people
-              .filter((person) => person.amountOwed > 0)
-              .map((person) => (
-                <li key={person.name} className="flex justify-between">
+            {Object.entries(people)
+              .filter(([_, person]) => person.amountOwed > 0)
+              .map(([id, person]) => (
+                <li key={id} className="flex justify-between">
                   <span>{person.name}</span>
                   <span>${person.amountOwed.toFixed(2)}</span>
                 </li>
